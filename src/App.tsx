@@ -1,0 +1,380 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useState, useRef, useEffect } from "react";
+import { GoogleGenAI, ThinkingLevel, GenerateContentResponse } from "@google/genai";
+import { 
+  ChefHat, 
+  Upload, 
+  Camera, 
+  Trash2, 
+  Loader2, 
+  Utensils, 
+  Clock, 
+  Zap, 
+  Search,
+  ArrowRight,
+  Sparkles,
+  RefreshCcw
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import ReactMarkdown from "react-markdown";
+import { cn } from "@/src/lib/utils";
+
+// Initialize Gemini
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+interface Recipe {
+  title: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  cookTime: string;
+  instructions: string;
+}
+
+interface AnalysisResult {
+  ingredients: string[];
+  recipes: Recipe[];
+}
+
+export default function App() {
+  const [ingredients, setIngredients] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage(reader.result as string);
+        setResult(null);
+        setError(null);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearAll = () => {
+    setIngredients("");
+    setImage(null);
+    setResult(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const analyzeIngredients = async () => {
+    if (!ingredients.trim() && !image) {
+      setError("Please provide some ingredients or a photo!");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError(null);
+
+    try {
+      const prompt = `
+        You are a creative, world-class Zero-Waste Chef.
+        ${image ? "I have provided a photo of my ingredients." : ""}
+        ${ingredients ? `I also have these ingredients: ${ingredients}` : ""}
+        
+        Your job is to suggest exactly 3 recipe ideas that use ONLY these ingredients (plus common pantry staples like oil, salt, pepper, and water).
+        
+        Constraints:
+        1. Do NOT suggest recipes that require buying extra groceries.
+        2. If an image is provided, identify the ingredients you see first.
+        3. For each recipe, provide:
+           - Title (Something catchy)
+           - Difficulty (Easy, Medium, Hard)
+           - Cook Time
+           - Step-by-step instructions
+        
+        Keep the tone encouraging and a little bit witty.
+        
+        Return the response in JSON format with the following structure:
+        {
+          "ingredients": ["list", "of", "identified", "ingredients"],
+          "recipes": [
+            {
+              "title": "string",
+              "difficulty": "Easy | Medium | Hard",
+              "cookTime": "string",
+              "instructions": "markdown string"
+            }
+          ]
+        }
+      `;
+
+      let contents: any;
+      if (image) {
+        const base64Data = image.split(",")[1];
+        contents = {
+          parts: [
+            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
+            { text: prompt }
+          ]
+        };
+      } else {
+        contents = prompt;
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          responseMimeType: "application/json"
+        }
+      });
+
+      const data = JSON.parse(response.text || "{}");
+      setResult(data);
+    } catch (err) {
+      console.error("Gemini Error:", err);
+      setError("Oops! My chef brain hit a snag. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FDFCFB] text-[#1A1A1A] font-sans selection:bg-[#FF6B35] selection:text-white">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-[#FF6B35] p-2 rounded-xl">
+              <ChefHat className="text-white w-6 h-6" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">Zero-Waste Chef</h1>
+          </div>
+          <button 
+            onClick={clearAll}
+            className="text-sm font-medium text-[#666] hover:text-[#1A1A1A] transition-colors flex items-center gap-2"
+          >
+            <RefreshCcw className="w-4 h-4" />
+            Start Over
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6 py-12">
+        {/* Hero Section */}
+        <section className="mb-16 text-center">
+          <motion.h2 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[0.9]"
+          >
+            DON'T TOSS IT.<br />
+            <span className="text-[#FF6B35]">CHEF IT.</span>
+          </motion.h2>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-lg text-[#666] max-w-xl mx-auto"
+          >
+            Snap a photo of your fridge or list your random leftovers. 
+            I'll whip up 3 gourmet recipes using exactly what you have.
+          </motion.p>
+        </section>
+
+        {/* Input Section */}
+        <div className="grid md:grid-cols-2 gap-8 mb-16">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-4"
+          >
+            <label className="text-xs font-bold uppercase tracking-widest text-[#999]">
+              List your ingredients
+            </label>
+            <textarea
+              value={ingredients}
+              onChange={(e) => setIngredients(e.target.value)}
+              placeholder="e.g. 2 wilted carrots, half an onion, some stale bread..."
+              className="w-full h-48 p-6 bg-white border-2 border-[#E5E5E5] rounded-3xl focus:border-[#FF6B35] outline-none transition-all resize-none text-lg placeholder:text-[#BBB]"
+            />
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-4"
+          >
+            <label className="text-xs font-bold uppercase tracking-widest text-[#999]">
+              Or snap a photo
+            </label>
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "w-full h-48 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden relative group",
+                image ? "border-[#FF6B35]" : "border-[#E5E5E5] hover:border-[#FF6B35] hover:bg-[#FFF9F6]"
+              )}
+            >
+              {image ? (
+                <>
+                  <img src={image} alt="Ingredients" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera className="text-white w-8 h-8" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-[#CCC] mb-2 group-hover:text-[#FF6B35] transition-colors" />
+                  <span className="text-[#999] font-medium">Upload or drag photo</span>
+                </>
+              )}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Action Button */}
+        <div className="flex justify-center mb-24">
+          <button
+            onClick={analyzeIngredients}
+            disabled={isAnalyzing || (!ingredients.trim() && !image)}
+            className={cn(
+              "px-12 py-5 rounded-full font-bold text-xl flex items-center gap-3 transition-all shadow-xl shadow-[#FF6B35]/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
+              "bg-[#FF6B35] text-white hover:bg-[#E85A2A]"
+            )}
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Chef is thinking...
+              </>
+            ) : (
+              <>
+                Cook Something Up
+                <ArrowRight className="w-6 h-6" />
+              </>
+            )}
+          </button>
+        </div>
+
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-12 p-4 bg-red-50 text-red-600 rounded-2xl text-center font-medium border border-red-100"
+          >
+            {error}
+          </motion.div>
+        )}
+
+        {/* Results Section */}
+        <AnimatePresence mode="wait">
+          {result && (
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="space-y-16"
+            >
+              {/* Identified Ingredients */}
+              {result.ingredients.length > 0 && (
+                <div className="text-center">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-[#999] mb-4">
+                    Ingredients Spotted
+                  </h3>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {result.ingredients.map((ing, i) => (
+                      <span key={i} className="px-4 py-2 bg-[#F0F0F0] rounded-full text-sm font-medium">
+                        {ing}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recipes Grid */}
+              <div className="grid lg:grid-cols-3 gap-8">
+                {result.recipes.map((recipe, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className="bg-white border border-[#E5E5E5] rounded-[2.5rem] p-8 flex flex-col shadow-sm hover:shadow-xl transition-all group"
+                  >
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="bg-[#FFF9F6] text-[#FF6B35] px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                        {recipe.difficulty}
+                      </div>
+                      <div className="flex items-center gap-1 text-[#666] text-sm font-medium">
+                        <Clock className="w-4 h-4" />
+                        {recipe.cookTime}
+                      </div>
+                    </div>
+
+                    <h4 className="text-2xl font-black mb-6 leading-tight group-hover:text-[#FF6B35] transition-colors">
+                      {recipe.title}
+                    </h4>
+
+                    <div className="prose prose-sm prose-neutral max-w-none flex-grow overflow-y-auto max-h-96 custom-scrollbar">
+                      <ReactMarkdown>{recipe.instructions}</ReactMarkdown>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-[#F0F0F0] flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[#999]">
+                        <Utensils className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-widest">Zero Waste</span>
+                      </div>
+                      <Sparkles className="w-5 h-5 text-[#FF6B35] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* Footer */}
+      <footer className="mt-24 border-t border-[#E5E5E5] py-12 px-6 bg-white">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <ChefHat className="text-[#FF6B35] w-5 h-5" />
+            <span className="font-bold">Zero-Waste Chef</span>
+          </div>
+          <p className="text-[#999] text-sm">
+            Made with AI to save the planet, one meal at a time.
+          </p>
+          <div className="flex items-center gap-4">
+            <a href="#" className="text-[#666] hover:text-[#1A1A1A] transition-colors"><Search className="w-5 h-5" /></a>
+            <a href="#" className="text-[#666] hover:text-[#1A1A1A] transition-colors"><Zap className="w-5 h-5" /></a>
+          </div>
+        </div>
+      </footer>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #E5E5E5;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #FF6B35;
+        }
+      `}</style>
+    </div>
+  );
+}

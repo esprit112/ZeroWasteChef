@@ -1,0 +1,5 @@
+{
+  "name": "Zero-Waste Chef",
+  "description": "Turn your leftover ingredients into delicious meals with AI-powered zero-waste recipes.",
+  "requestFramePermissions": ["camera"]
+}
